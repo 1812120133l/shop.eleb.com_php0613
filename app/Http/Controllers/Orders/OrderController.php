@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Orders;
 
+use App\Models\Menu;
 use App\Models\Order;
 use App\User;
 use Carbon\Carbon;
@@ -72,38 +73,81 @@ class OrderController extends Controller
     }
 
     public function greens(){
-
+        $shop_id=Auth::user()->id;
         $time=date('Y-m-d 00:00:00',strtotime("-6 day"));
         $time2=date('Y-m-d 23:59:59');
-        $sql="select DATE(o.created_at) as date,COUNT(*) as count,o.goods_id,o.goods_name from order_details o JOIN menus m on o.goods_id=m.id where o.created_at > '{$time}' and o.created_at <= '{$time2}' and m.shop_id=5 GROUP BY date,o.goods_id,o.goods_name";
+        $sql="select DATE(o.created_at) as date,COUNT(*) as count,o.goods_id,o.goods_name,SUM(o.amount) as amount from order_details o JOIN menus m on o.goods_id=m.id where o.created_at > '{$time}' and o.created_at <= '{$time2}' and m.shop_id=5 GROUP BY date,o.goods_id,o.goods_name";
         $rows=DB::select($sql);
-        dd($rows);
+
+        $menus = Menu::where('shop_id',$shop_id)->select(['id','goods_name'])->get();
+        $keyed=[];
+        foreach($menus as $menu){
+            $keyed[$menu->id]=$menu->goods_name;
+        }
+
         $weeks=[];
         for($i=0;$i<7;$i++){
-            $weeks[date('m-d',strtotime("-{$i} day"))]=0;
+            $weeks[]=date('Y-m-d',strtotime("-{$i} day"));
         }
-        foreach ($weeks as $k=>$v){
-
-        }
-        dd($weeks);
-        foreach($rows as $row){
-            $weeks[substr($row->date,5,5)][]=$row->count;
+        $result=[];
+        foreach($keyed as $id=>$name){
+            foreach($weeks as $day){
+                $result[$id][$day]=0;
+            }
         }
         //dd($weeks);
+        foreach($rows as $row){
+            $result[$row->goods_id][$row->date]=$row->amount;
+        }
+        //dd($result);
+        //dd($weeks);
+        $series=[];
+       foreach($result as $id=>$data){
+           $serie = [
+               'name'=> $keyed[$id],
+               'type'=>'line',
+               'data'=>array_values($data)
+           ];
+           $series[] = $serie;
+       }
+
+        //dd($series);
 
         $month=date('Y-m-d 00:00:00',strtotime("-3 month"));
         $month2=date('Y-m-d 23:59:59');
-        $sql2="select DATE_FORMAT(o.created_at,'%Y-%m') as date,COUNT(*) as count,o.goods_name as name from order_details o JOIN menus m on o.goods_id=m.id where o.created_at > '{$month}' and o.created_at <= '{$month2}' and m.shop_id=5 GROUP BY date,o.goods_name";
+        $sql2="select DATE_FORMAT(o.created_at,'%Y-%m') as date,COUNT(*) as count,o.goods_name as name ,SUM(o.amount) as amount,o.goods_id from order_details o JOIN menus m on o.goods_id=m.id where o.created_at > '{$month}' and o.created_at <= '{$month2}' and m.shop_id=5 GROUP BY date,o.goods_name,o.goods_id";
         $greens=DB::select($sql2);
-        dd($greens);
+        //dd($greens);
+        $months_id=[];
+        foreach($menus as $menu){
+            $months_id[$menu->id]=$menu->goods_name;
+        }
         $months=[];
         for($i=0;$i<3;$i++){
-            $months[date('Y-m',strtotime("-{$i} month"))]=0;
+            $months[]=date('Y-m',strtotime("-{$i} month"));
+        }
+        $months_result=[];
+        foreach($months_id as $id=>$name){
+            foreach($months as $day){
+                $months_result[$id][$day]=0;
+            }
         }
         foreach($greens as $green){
-            $months[substr($green->date,0,8)]=$green->count;
+            $months_result[$green->goods_id][$green->date]=$green->amount;
         }
-        return view('order.greens',compact('weeks','months'));
+
+        $months_series=[];
+        foreach($months_result as $id=>$data){
+            $serie = [
+                'name'=> $months_id[$id],
+                'type'=>'line',
+                'data'=>array_values($data)
+            ];
+            $months_series[] = $serie;
+        }
+       // dd($months_series);
+
+        return view('order.greens',compact('series','weeks','months_series','months'));
 
     }
 }
